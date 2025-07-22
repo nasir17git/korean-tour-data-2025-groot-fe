@@ -93,6 +93,7 @@ jobs:
     - name: Upload deploy.tar.gz to S3
       run: aws s3 cp deploy.tar.gz s3://groot-fe-preview/frontend/deploy.tar.gz
 
+    # SSM으로 EC2 접근해 ec2-user 권한으로 tar.gz 다운로드 후 deploy.sh 실행
     - name: Trigger deploy.sh on EC2 via SSM
       run: |
         aws ssm send-command \
@@ -100,8 +101,10 @@ jobs:
           --document-name "AWS-RunShellScript" \
           --comment "Deploy new frontend version" \
           --parameters 'commands=[
-            "aws s3 cp s3://groot-fe-preview/frontend/deploy.tar.gz /home/ec2-user/",
-            "cd /home/ec2-user && ./deploy.sh"
+            "sudo -i -u ec2-user bash -c \
+              \"aws s3 cp s3://groot-fe-preview/frontend/deploy.tar.gz /home/ec2-user/ && \
+              cd /home/ec2-user && \
+            ./deploy.sh\""
           ]'
 
     # ✅ 배포된 URL 정상 응답 확인 (5분 동안 10초 간격 재시도)
