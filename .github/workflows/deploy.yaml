@@ -15,7 +15,6 @@ run-name: |
   }}
 
 on:
-  push:
   workflow_dispatch:
     inputs:
       commit:
