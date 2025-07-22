@@ -26,6 +26,10 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  id-token: write
+
+env:
+  EC2_INSTANCE_ID: i-0ed0405fc7ced8fe4
 
 jobs:
   build-and-deploy:
@@ -79,20 +83,29 @@ jobs:
           yarn.lock \
           next.config.ts
 
-    - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.8.0
+    # AWS OIDC 기반 임시토큰 발급
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        ssh-private-key: ${{ secrets.SSH_GROOT_KEY }}
+        role-to-assume: arn:aws:iam::827604627136:role/groot-git
+        aws-region: ap-northeast-2
 
-    - name: Add server to known hosts
-      run: |
-        mkdir -p ~/.ssh
-        ssh-keyscan -H deploy.logonme.click >> ~/.ssh/known_hosts || true
+    - name: Upload deploy.tar.gz to S3
+      run: aws s3 cp deploy.tar.gz s3://groot-fe-preview/frontend/deploy.tar.gz
 
-    - name: Deploy to server
+    # SSM으로 EC2 접근해 ec2-user 권한으로 tar.gz 다운로드 후 deploy.sh 실행
+    - name: Trigger deploy.sh on EC2 via SSM
       run: |
-        scp deploy.tar.gz ec2-user@deploy.logonme.click:/home/ec2-user/
-        ssh ec2-user@deploy.logonme.click "cd /home/ec2-user && ./deploy.sh"
+        aws ssm send-command \
+          --targets "Key=InstanceIds,Values=${{env.EC2_INSTANCE_ID}}" \
+          --document-name "AWS-RunShellScript" \
+          --comment "Deploy new frontend version" \
+          --parameters 'commands=[
+            "sudo -i -u ec2-user bash -c \
+              \"aws s3 cp s3://groot-fe-preview/frontend/deploy.tar.gz /home/ec2-user/ && \
+              cd /home/ec2-user && \
+            ./deploy.sh\""
+          ]'
 
     # ✅ 배포된 URL 정상 응답 확인 (5분 동안 10초 간격 재시도)
     - name: Verify deployed URL
