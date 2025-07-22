@@ -77,7 +77,7 @@ jobs:
           public \
           package.json \
           yarn.lock \
-          next.config.js
+          next.config.ts
 
     - name: Setup SSH
       uses: webfactory/ssh-agent@v0.8.0
