@@ -72,6 +72,8 @@ jobs:
 
     - name: Build application
       run: yarn build
+      env:
+        NEXT_PUBLIC_API_BASE_URL: https://be.logonme.click/api/v1
 
     # ✅ 배포용 tar.gz 생성
     - name: Create deployment archive
