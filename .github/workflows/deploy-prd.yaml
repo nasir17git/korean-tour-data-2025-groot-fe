@@ -1,10 +1,11 @@
 name: 🚀 Groot Frontend PRD Pipeline
 
 on:
+  push:
   workflow_dispatch:
     inputs:
       commit:
-        description: "8자리 short SHA (비워두면 브랜치의 최신 커밋)"
+        description: "P"
         required: false
 
 # OIDC token permissions
@@ -17,35 +18,24 @@ env:
   TARGET_EC2_TAG: 'prd'
   SERVICE_URL: 'https://www.groot.live'
 
+# main 브랜치에서만 실행 가능하도록 제한
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # main 브랜치가 아니면 실행하지 않음
+    if: github.ref == 'refs/heads/main'
 
     steps:
-    # ✅ 공통 checkout: 이벤트별로 SHA 결정
+    - name: Check branch
+      run: |
+        if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+          echo "❌ PRD 배포는 main 브랜치에서만 가능합니다."
+          exit 1
+        fi
+        echo "✅ main 브랜치 확인됨"
+
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
-
-    # ✅ SHA 계산 (PR이면 head.sha, 수동이면 입력값 or HEAD)
-    - name: Resolve commit SHA
-      id: resolve_sha
-      run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          FULL_SHA="${{ github.event.pull_request.head.sha }}"
-        else
-          if [ -n "${{ github.event.inputs.commit }}" ]; then
-            FULL_SHA=$(git rev-parse ${{ github.event.inputs.commit }})
-          else
-            FULL_SHA=$(git rev-parse HEAD)
-          fi
-        fi
-        SHORT_SHA=$(echo $FULL_SHA | cut -c1-8)
-        echo "Using commit: $FULL_SHA ($SHORT_SHA)"
-        echo "full_sha=$FULL_SHA" >> $GITHUB_OUTPUT
-        echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -85,7 +75,7 @@ jobs:
       id: find
       run: |
         IID=$(aws ec2 describe-instances \
-          --filters "Name=tag:env,Values=${{ env.TARGET_EC2_TAG }}" "Name=instance-state-name,Values=running" \
+          --filters "Name=tag:env,Values=${{ env.TARGET_EC2_TAG }}" "Name=tag:service,Values=groot" "Name=instance-state-name,Values=running" \
           --query "Reservations[].Instances[].InstanceId" --output text)
         if [ -z "$IID" ]; then
           echo "No running instance found with tag=env=${TARGET_EC2_TAG}" >&2
@@ -169,20 +159,7 @@ jobs:
 
     - name: Write deployment summary
       run: |
-        SHORT_SHA="${{ steps.resolve_sha.outputs.short_sha }}"
         URL="${{ env.SERVICE_URL }}"
-
-        echo "## 🚀 프론트엔드 배포 완료" >> $GITHUB_STEP_SUMMARY
+        echo "## 🚀 PRD 배포 완료" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          echo "| 항목 | 값 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
-          echo "| PR 번호 | #${{ github.event.pull_request.number }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 제목 | ${{ github.event.pull_request.title }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 브랜치 | ${{ github.head_ref }} |" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "| 항목 | 값 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
-          echo "| 브랜치 | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
-        fi
+        echo "👉 [${URL}](${URL})" >> $GITHUB_STEP_SUMMARY
