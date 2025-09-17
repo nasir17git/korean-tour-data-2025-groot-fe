@@ -101,7 +101,7 @@ jobs:
       id: find
       run: |
         IID=$(aws ec2 describe-instances \
-          --filters "Name=tag:env,Values=${{ env.TARGET_EC2_TAG }}" "Name=instance-state-name,Values=running" \
+          --filters "Name=tag:env,Values=${{ env.TARGET_EC2_TAG }}" "Name=tag:service,Values=groot" "Name=instance-state-name,Values=running" \
           --query "Reservations[].Instances[].InstanceId" --output text)
         if [ -z "$IID" ]; then
           echo "No running instance found with tag=env=${TARGET_EC2_TAG}" >&2
