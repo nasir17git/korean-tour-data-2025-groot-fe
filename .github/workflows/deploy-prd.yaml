@@ -1,11 +1,10 @@
 name: 🚀 Groot Frontend PRD Pipeline
 
 on:
-  push:
   workflow_dispatch:
     inputs:
       commit:
-        description: "P"
+        description: "배포 시작"
         required: false
 
 # OIDC token permissions
@@ -17,6 +16,7 @@ permissions:
 env:
   TARGET_EC2_TAG: 'prd'
   SERVICE_URL: 'https://www.groot.live'
+  NEXT_PUBLIC_API_BASE_URL: https://be-prd.groot.live/api/v1
 
 # main 브랜치에서만 실행 가능하도록 제한
 jobs:
@@ -48,13 +48,11 @@ jobs:
 
     - name: Build application
       run: yarn build
-      env:
-        NEXT_PUBLIC_API_BASE_URL: https://be-prd.groot.live/api/v1
 
     # ✅ 배포용 tar.gz 생성
     - name: Create deployment archive
       run: |
-        tar -czf fe-deploy.tar.gz \
+        tar -czf deploy-fe-prd.tar.gz \
           .next \
           public \
           package.json \
@@ -68,8 +66,8 @@ jobs:
         role-to-assume: arn:aws:iam::827604627136:role/groot-git
         aws-region: ap-northeast-2
 
-    - name: Upload fe-deploy.tar.gz to S3
-      run: aws s3 cp fe-deploy.tar.gz s3://groot-fe-preview/frontend/fe-deploy.tar.gz
+    - name: Upload deploy-fe-prd.tar.gz to S3
+      run: aws s3 cp deploy-fe-prd.tar.gz s3://groot-app-bucket/deploy-fe-prd.tar.gz
 
     - name: Find target instance-id by tag
       id: find
@@ -89,12 +87,12 @@ jobs:
         CMD_ID=$(aws ssm send-command \
           --instance-ids "${{ steps.find.outputs.instance_id }}" \
           --document-name "AWS-RunShellScript" \
-          --comment "Deploy groot frontend dev via SSM" \
+          --comment "Deploy groot frontend prd via SSM" \
           --parameters commands='[
             "set -e",
-            "aws s3 cp s3://groot-fe-preview/frontend/deploy-fe.sh /home/ec2-user/groot/deploy-fe.sh",
-            "chmod +x /home/ec2-user/groot/deploy-fe.sh",
-            "/home/ec2-user/groot/deploy-fe.sh"
+            "sudo -u ec2-user aws s3 cp s3://groot-app-bucket/deploy-scripts/deploy-fe-prd.sh /home/ec2-user/groot/deploy-fe-prd.sh",
+            "sudo -u ec2-user chmod +x /home/ec2-user/groot/deploy-fe-prd.sh",
+            "sudo -u ec2-user /home/ec2-user/groot/deploy-fe-prd.sh"
             ]' \
           --query "Command.CommandId" --output text)
         echo "command_id=$CMD_ID" >> $GITHUB_OUTPUT

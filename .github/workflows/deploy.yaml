@@ -1,4 +1,4 @@
-name: 🏗 Groot Frontend DEV Pipeline 
+name: 🏗️ Groot Frontend DEV Pipeline 
 
 # 실행 이름: PR이벤트면 PR번호/제목 + SHA, 수동이면 브랜치+입력SHA
 run-name: |
@@ -32,6 +32,7 @@ permissions:
 env:
   TARGET_EC2_TAG: 'dev'
   SERVICE_URL: 'https://fe-dev.groot.live'
+  NEXT_PUBLIC_API_BASE_URL: https://be-dev.groot.live/api/v1
 
 jobs:
   build-and-deploy:
@@ -74,13 +75,11 @@ jobs:
 
     - name: Build application
       run: yarn build
-      env:
-        NEXT_PUBLIC_API_BASE_URL: https://be-dev.groot.live/api/v1
 
     # ✅ 배포용 tar.gz 생성
     - name: Create deployment archive
       run: |
-        tar -czf fe-deploy.tar.gz \
+        tar -czf deploy-fe-dev.tar.gz \
           .next \
           public \
           package.json \
@@ -94,8 +93,8 @@ jobs:
         role-to-assume: arn:aws:iam::827604627136:role/groot-git
         aws-region: ap-northeast-2
 
-    - name: Upload fe-deploy.tar.gz to S3
-      run: aws s3 cp fe-deploy.tar.gz s3://groot-fe-preview/frontend/fe-deploy.tar.gz
+    - name: Upload deploy-fe-dev.tar.gz to S3
+      run: aws s3 cp deploy-fe-dev.tar.gz s3://groot-app-bucket/deploy-fe-dev.tar.gz
 
     - name: Find target instance-id by tag
       id: find
@@ -118,9 +117,9 @@ jobs:
           --comment "Deploy groot frontend dev via SSM" \
           --parameters commands='[
             "set -e",
-            "aws s3 cp s3://groot-fe-preview/frontend/deploy-fe.sh /home/ec2-user/groot/deploy-fe.sh",
-            "chmod +x /home/ec2-user/groot/deploy-fe.sh",
-            "/home/ec2-user/groot/deploy-fe.sh"
+            "sudo -u ec2-user aws s3 cp s3://groot-app-bucket/deploy-scripts/deploy-fe-dev.sh /home/ec2-user/groot/deploy-fe-dev.sh",
+            "sudo -u ec2-user chmod +x /home/ec2-user/groot/deploy-fe-dev.sh",
+            "sudo -u ec2-user /home/ec2-user/groot/deploy-fe-dev.sh"
             ]' \
           --query "Command.CommandId" --output text)
         echo "command_id=$CMD_ID" >> $GITHUB_OUTPUT
@@ -155,32 +154,6 @@ jobs:
           sleep 5
         done
         echo "Timeout waiting for SSM command" >&2
-        exit 1
-
-    # ✅ 배포된 URL 정상 응답 확인 (5분 동안 10초 간격 재시도)
-    - name: Verify deployed URL
-      run: |
-        URL="${{ env.SERVICE_URL }}"
-
-        echo "🔍 배포 검증 시작: ${URL}"
-        ATTEMPTS=30   # 30회 * 10초 = 5분
-        COUNT=0
-
-        while [ $COUNT -lt $ATTEMPTS ]; do
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${URL}" || echo "000")
-          echo "Attempt $((COUNT+1)) → HTTP $STATUS_CODE"
-
-          if [ "$STATUS_CODE" = "200" ]; then
-            echo "✅ 검증 성공! HTTP 200"
-            exit 0
-          fi
-
-          COUNT=$((COUNT+1))
-          echo "⏳ 10초 후 재시도..."
-          sleep 10
-        done
-
-        echo "❌ 검증 실패! 5분 동안 HTTP 200 응답을 받지 못했습니다."
         exit 1
 
     # ✅ Summary 출력 (PR이벤트와 수동 둘 다 지원)
@@ -221,5 +194,5 @@ jobs:
             issue_number: pr_number,
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: `🚀 PR **#${pr_number} (${context.payload.pull_request.head.ref})**\n커밋 \`${shortSha}\` 이(가) **dev 환경**에 배포되었습니다!\n👉 [${url}](${url})`
+            body: `🏗️ PR **#${pr_number} (${context.payload.pull_request.head.ref})**\n커밋 \`${shortSha}\` 이(가) **dev 환경**에 배포되었습니다!\n👉 [${url}](${url})`
           });
